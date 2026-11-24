@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Palestra">
+  <meta name="theme-color" content="#000000">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="icon" href="icon-512.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+  <title>Palestra</title>
+</head>
+<body>
+  <header class="top">
+    <p id="oggi" class="date"></p>
+    <h1 id="title">Allenamento</h1>
+  </header>
+
+  <main id="view"></main>
+
+  <div id="timer" class="timer hidden" role="dialog" aria-label="Timer recupero">
+    <div class="timer-box">
+      <p class="timer-eyebrow">Recupero</p>
+      <p id="timer-label" class="timer-label">Recupero</p>
+      <div class="ring-wrap">
+        <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+          <circle id="ring" class="ring-fg" cx="60" cy="60" r="52"></circle>
+        </svg>
+        <div id="timer-num" class="timer-num">0:00</div>
+      </div>
+      <p id="timer-sub" class="timer-sub"></p>
+      <div class="timer-btns">
+        <button class="btn" data-t="-15">−15s</button>
+        <button class="btn primary" data-t="skip">Salta</button>
+        <button class="btn" data-t="15">+15s</button>
+      </div>
+    </div>
+  </div>
+
+  <nav class="tabs">
+    <span class="tab-pill" aria-hidden="true"></span>
+    <button data-tab="allenamento">
+      <svg viewBox="0 0 24 24"><path d="M3 10v4M6 7v10M18 7v10M21 10v4M6 12h12"/></svg>
+      <span>Allenamento</span>
+    </button>
+    <button data-tab="dieta">
+      <svg viewBox="0 0 24 24"><path d="M7 3v8a2 2 0 0 0 4 0V3M9 11v10M17 3c-2 2-2 6 0 8v10"/></svg>
+      <span>Dieta</span>
+    </button>
+    <button data-tab="progressi">
+      <svg viewBox="0 0 24 24"><path d="M3 20h18M5 16l5-5 4 3 6-7"/></svg>
+      <span>Progressi</span>
+    </button>
+  </nav>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
