@@ -32,7 +32,9 @@
 :root[data-tema="lime"]    { --accent: #c8f560; --accent-ink: #14180a; }
 :root[data-tema="grafite"] { --accent: #f2f2f7; --accent-ink: #000000; }
 
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* manipulation: niente zoom col doppio tocco (lo scorrimento resta normale) */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+button, label.btn { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 
 html, body {
   margin: 0;
@@ -296,6 +298,107 @@ details.nota p { margin: 8px 0 0; color: var(--muted); font-size: 14px; line-hei
 .tabs button:active { transform: scale(.9); transition-duration: .12s; }
 .tabs svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .tabs button.on { color: var(--accent); }
+
+/* Pulsante "Le mie schede" in alto */
+.top { position: relative; }
+.menu-btn {
+  position: absolute; right: 18px; bottom: 6px; display: grid; place-items: center; width: 40px; height: 40px; padding: 0;
+  border: 0; border-radius: 50%; background: var(--card2); color: var(--text);
+  transition: transform .3s var(--spring), background-color .3s var(--ease);
+}
+.menu-btn:active { transform: scale(.88); transition-duration: .08s; }
+.menu-btn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.menu-btn circle { fill: var(--accent); stroke: none; }
+body.bloccato { overflow: hidden; }
+
+/* Pannello a tutto schermo che sale dal basso */
+.foglio {
+  position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--bg);
+  transform: translateY(100%); visibility: hidden;
+  transition: transform .55s var(--ease), visibility 0s .55s;
+}
+.foglio.aperto { transform: none; visibility: visible; transition: transform .55s var(--ease), visibility 0s; }
+.foglio-testa {
+  flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px;
+  padding: calc(12px + var(--safe-top)) 12px 10px; border-bottom: 1px solid var(--line);
+  background: rgba(0, 0, 0, .85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+}
+.foglio-testa h2 { font: 700 17px var(--round); text-align: center; }
+.foglio-testa > :first-child { justify-self: start; }
+.foglio-testa > :last-child { justify-self: end; }
+.fh-btn { padding: 8px 10px; border: 0; border-radius: 10px; background: none; color: var(--accent); font-size: 16px; transition: opacity .2s; }
+.fh-btn.forte { font-weight: 700; }
+.fh-btn:active { opacity: .5; }
+.foglio-corpo { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 16px 16px calc(40px + var(--safe-bottom)); }
+.foglio-corpo > * { max-width: 640px; margin-left: auto; margin-right: auto; }
+.f-intro { margin: 0 4px 16px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.f-intro b { color: var(--text); }
+.f-stato { margin: 12px 0 0; color: var(--accent); font-size: 14px; font-weight: 600; animation: lampeggia 1s ease-in-out infinite alternate; }
+@keyframes lampeggia { to { opacity: .4; } }
+.f-errore { margin: 12px 0; padding: 12px 14px; border-radius: 14px; background: rgba(255, 69, 58, .12); color: #ff8a80; font-size: 14px; line-height: 1.45; }
+.f-avviso { margin-bottom: 14px; padding: 14px 16px; border-radius: 18px; background: color-mix(in srgb, var(--accent) 14%, transparent); font-size: 14px; line-height: 1.5; }
+.f-slot:empty { display: none; }
+.f-avviso.giallo { background: rgba(255, 214, 10, .1); }
+.f-avviso ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); }
+
+/* Elenco delle schede e diete */
+.piani { margin-top: 10px; }
+.piano { border-top: 1px solid var(--line); padding: 12px 0; }
+.piano:first-child { border-top: 0; }
+.piano-sel { display: flex; align-items: center; gap: 12px; width: 100%; padding: 0; border: 0; background: none; text-align: left; }
+.radio {
+  flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  border: 1.5px solid var(--line2); transition: background-color .3s var(--ease), border-color .3s var(--ease);
+}
+.radio svg { width: 14px; height: 14px; fill: none; stroke: var(--accent-ink); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transform: scale(.4); transition: opacity .2s, transform .35s var(--spring); }
+.piano.on .radio { background: var(--accent); border-color: var(--accent); }
+.piano.on .radio svg { opacity: 1; transform: none; }
+.piano-txt { display: flex; flex-direction: column; min-width: 0; }
+.piano-txt b { font-size: 16px; font-weight: 600; }
+.piano-txt small { color: var(--muted); font-size: 13px; }
+.piano-az { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0 36px; }
+.piano-az button {
+  padding: 6px 12px; border: 0; border-radius: 9px; background: var(--card2); color: var(--text); font-size: 13px; font-weight: 600;
+  transition: transform .3s var(--spring), background-color .3s, color .3s;
+}
+.piano-az button:active { transform: scale(.92); transition-duration: .08s; }
+.piano-az button.conferma { background: rgba(255, 69, 58, .14); }
+
+/* Editor */
+.f-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.f-rimuovi { padding: 4px 8px; border: 0; border-radius: 8px; background: none; color: var(--danger); font-size: 13px; font-weight: 600; transition: opacity .2s, background-color .3s; }
+.f-rimuovi:active { opacity: .5; }
+.f-rimuovi.conferma { background: rgba(255, 69, 58, .14); }
+.f-lbl { display: flex; flex-direction: column; gap: 5px; margin-top: 12px; min-width: 0; }
+.f-lbl > span { color: var(--muted); font-size: 12px; font-weight: 600; }
+.in {
+  width: 100%; min-width: 0; padding: 11px 12px; border: 0; border-radius: 12px; background: var(--card2);
+  color: var(--text); font: 16px var(--font); outline: none; -webkit-appearance: none; appearance: none;
+  transition: box-shadow .3s var(--ease);
+}
+.in:focus { box-shadow: 0 0 0 2px var(--accent); }
+textarea.in { resize: vertical; line-height: 1.4; }
+select.in { padding-right: 30px; background: var(--card2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center / 16px; }
+.in-forte { font-weight: 600; }
+.f-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.f-grid3 { display: grid; grid-template-columns: 1fr 1.3fr 1.3fr; gap: 8px; }
+.f-lista { margin-top: 14px; }
+.f-voce, .f-opz { margin-top: 10px; padding: 12px; border-radius: 18px; background: rgba(255, 255, 255, .035); border: 1px solid var(--line); }
+.f-voce .f-lbl { margin-top: 8px; }
+.f-voce-top { display: flex; align-items: center; gap: 8px; }
+.f-x {
+  flex: none; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%;
+  background: none; color: var(--muted); font-size: 15px; transition: transform .3s var(--spring), color .2s, background-color .2s;
+}
+.f-x:active { transform: scale(.8); color: var(--danger); background: rgba(255, 69, 58, .12); transition-duration: .08s; }
+.f-alimento { display: grid; grid-template-columns: 1fr 96px auto; gap: 6px; align-items: center; margin-top: 8px; }
+.f-add {
+  display: block; width: 100%; margin-top: 10px; padding: 11px; border: 1.5px dashed var(--line2); border-radius: 14px;
+  background: none; color: var(--accent); font-size: 14px; font-weight: 600; transition: transform .3s var(--spring), background-color .2s;
+}
+.f-add:active { transform: scale(.97); background: rgba(255, 255, 255, .04); transition-duration: .08s; }
+.f-add-grande { display: block; width: 100%; margin-bottom: 12px; }
+.f-salva-fondo { display: block; width: 100%; margin-top: 4px; padding: 15px; font-size: 16px; }
 
 /* Schermata di apertura */
 .splash {

@@ -28,6 +28,22 @@ const NOMI_GIORNI = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì"
 
 const empty = (titolo, testo) => `<div class="empty"><h3>${esc(titolo)}</h3><p>${esc(testo)}</p></div>`;
 
+// ---------- schede e diete: quella di base (data.js) + quelle caricate o create nell'app ----------
+const PIANO_BASE = "base";
+function getPiani() {
+  const p = store.get("piani", {});
+  return { schede: p.schede || [], diete: p.diete || [], scheda: p.scheda || PIANO_BASE, dieta: p.dieta || PIANO_BASE };
+}
+const listaDi = tipo => (tipo === "scheda" ? "schede" : "diete");
+const baseDi = tipo => (tipo === "scheda" ? { ...SCHEDA, nome: SCHEDA.nome || "Scheda base" } : { ...DIETA, nome: DIETA.nome || "Dieta base" });
+function pianoAttivo(tipo) {
+  const p = getPiani(), id = p[tipo];
+  return (id !== PIANO_BASE && p[listaDi(tipo)].find(x => x.id === id)) || baseDi(tipo);
+}
+const schedaAttiva = () => pianoAttivo("scheda");
+const dietaAttiva = () => pianoAttivo("dieta");
+const chiaveScelte = () => { const id = getPiani().dieta; return id === PIANO_BASE ? "scelte" : "scelte_" + id; };
+
 // ---------- stato ----------
 const state = {
   tab: store.get("tab", "allenamento"),
@@ -37,10 +53,11 @@ const state = {
 };
 
 // all'apertura mostra direttamente l'allenamento di oggi
-(() => {
-  const i = (SCHEDA.giorni || []).findIndex(g => g.dow === new Date().getDay());
-  if (i >= 0) state.giorno = i;
-})();
+function vaiAOggi() {
+  const i = (schedaAttiva().giorni || []).findIndex(g => g.dow === new Date().getDay());
+  state.giorno = i >= 0 ? i : 0;
+}
+vaiAOggi();
 
 const TITOLI = { allenamento: "Allenamento", dieta: "Dieta", progressi: "Progressi" };
 
@@ -102,7 +119,8 @@ function rigaEsercizio(e, pesi, fatte) {
 }
 
 function viewAllenamento() {
-  const giorni = SCHEDA.giorni || [];
+  const S = schedaAttiva();
+  const giorni = S.giorni || [];
   if (!giorni.length) return empty("Scheda in costruzione", "La stiamo preparando insieme: appena è pronta la trovi qui.");
   if (state.giorno >= giorni.length) state.giorno = 0;
   const g = giorni[state.giorno];
@@ -132,8 +150,8 @@ function viewAllenamento() {
     ${pct >= 100 ? `<p class="hero-done">Allenamento completato 💪</p>` : ""}
   </section>`;
 
-  if (SCHEDA.note) h += `<details class="nota" data-gk="nota" ${state.aperti.nota ? "open" : ""}>
-    <summary>Come allenarti${CHEV}</summary><p>${esc(SCHEDA.note)}</p></details>`;
+  if (S.note) h += `<details class="nota" data-gk="nota" ${state.aperti.nota ? "open" : ""}>
+    <summary>Come allenarti${CHEV}</summary><p>${esc(S.note)}</p></details>`;
 
   // raggruppa gli esercizi per gruppo muscolare, nell'ordine della scheda
   const gruppi = [];
@@ -186,23 +204,24 @@ function anello(frazione) {
 }
 
 function viewDieta() {
-  const pasti = DIETA.pasti || [];
+  const D = dietaAttiva();
+  const pasti = D.pasti || [];
   if (!pasti.length) return empty("Dieta in costruzione", "La stiamo preparando insieme: appena è pronta la trovi qui.");
   const spunte = store.get("pasti_" + today(), {});
   const fatti = pasti.filter((_, i) => spunte[i]).length;
-  const scelte = store.get("scelte", {});
+  const scelte = store.get(chiaveScelte(), {});
 
   let h = `<section class="hero diet-hero">
     <div class="dh-ring">${anello(fatti / pasti.length)}<b>${fatti}/${pasti.length}</b></div>
     <div>
       <p class="eyebrow">Oggi</p>
       <h2>${fatti === pasti.length ? "Tutti i pasti fatti 👏" : "Pasti di oggi"}</h2>
-      ${DIETA.obiettivo ? `<p class="hero-sub">${esc(DIETA.obiettivo)}</p>` : ""}
+      ${D.obiettivo ? `<p class="hero-sub">${esc(D.obiettivo)}</p>` : ""}
     </div>
   </section>`;
 
-  if (DIETA.note) h += `<details class="nota" data-gk="nota-dieta" ${state.aperti["nota-dieta"] ? "open" : ""}>
-    <summary>Regole della dieta${CHEV}</summary><p>${esc(DIETA.note)}</p></details>`;
+  if (D.note) h += `<details class="nota" data-gk="nota-dieta" ${state.aperti["nota-dieta"] ? "open" : ""}>
+    <summary>Regole della dieta${CHEV}</summary><p>${esc(D.note)}</p></details>`;
 
   pasti.forEach((p, i) => {
     let alimenti = p.alimenti || [], seg = "", notaOpz = "";
@@ -210,7 +229,7 @@ function viewDieta() {
       const j = Math.min(scelte[i] || 0, p.opzioni.length - 1);
       alimenti = p.opzioni[j].alimenti || [];
       notaOpz = p.opzioni[j].note || "";
-      seg = `<div class="seg">${p.opzioni.map((o, k) =>
+      if (p.opzioni.length > 1) seg = `<div class="seg">${p.opzioni.map((o, k) =>
         `<button class="${k === j ? "on" : ""}" data-opzione="${i}:${k}">${esc(o.nome)}</button>`).join("")}</div>`;
     }
     h += `<article class="meal${spunte[i] ? " done" : ""}">
@@ -466,6 +485,362 @@ function animaTendina(d) {
   };
 }
 
+// ---------- LE MIE SCHEDE: menu, import da file ed editor ----------
+const foglio = { aperto: false, vista: "menu", tipo: "scheda", bozza: null, id: null, ignorate: [], avviso: "", errore: "", erroreTipo: "", caricamento: "" };
+const NOMI_SETT = [[1, "Lunedì"], [2, "Martedì"], [3, "Mercoledì"], [4, "Giovedì"], [5, "Venerdì"], [6, "Sabato"], [0, "Domenica"]];
+const copia = o => JSON.parse(JSON.stringify(o));
+const nuovoId = () => "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+
+// elementi vuoti da aggiungere nell'editor, in base a dove li aggiungi
+const NUOVI = {
+  giorni: () => ({ titolo: "", dow: "", cardio: "", cardioMin: "", esercizi: [NUOVI.esercizi()] }),
+  esercizi: () => ({ gruppo: "", nome: "", serie: 3, reps: "10", recupero: 90, note: "" }),
+  pasti: () => ({ nome: "", ora: "", kcal: "", note: "", opzioni: [NUOVI.opzioni()] }),
+  opzioni: () => ({ nome: "", alimenti: [NUOVI.alimenti()] }),
+  alimenti: () => ({ nome: "", qta: "" })
+};
+const vuoto = tipo => tipo === "scheda"
+  ? { nome: "", note: "", giorni: [NUOVI.giorni()] }
+  : { nome: "", obiettivo: "", note: "", pasti: [NUOVI.pasti()] };
+
+const percorso = (o, p) => p.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
+function impostaPercorso(o, p, v) {
+  const k = p.split("."), ult = k.pop();
+  const dove = percorso(o, k.join("."));
+  if (dove) dove[ult] = v;
+}
+
+function riassunto(tipo, x) {
+  if (tipo === "scheda") {
+    const g = (x.giorni || []).length, e = (x.giorni || []).reduce((a, d) => a + (d.esercizi || []).length, 0);
+    return `${g} ${g === 1 ? "giorno" : "giorni"} · ${e} esercizi`;
+  }
+  const n = (x.pasti || []).length;
+  return `${n} ${n === 1 ? "pasto" : "pasti"}${x.obiettivo ? " · " + x.obiettivo.replace(/^≈\s*/, "") : ""}`;
+}
+
+function sezionePiani(tipo) {
+  const p = getPiani(), attivo = p[tipo];
+  const tutti = [{ id: PIANO_BASE, ...baseDi(tipo) }, ...p[listaDi(tipo)]];
+  const righe = tutti.map(x => `<div class="piano${x.id === attivo ? " on" : ""}">
+      <button class="piano-sel" data-f-usa="${tipo}|${x.id}">
+        <span class="radio">${CHECK}</span>
+        <span class="piano-txt"><b>${esc(x.nome)}</b><small>${esc(riassunto(tipo, x))}</small></span>
+      </button>
+      <div class="piano-az">
+        <button data-f-modifica="${tipo}|${x.id}">Modifica</button>
+        <button data-f-invia="${tipo}|${x.id}">Invia</button>
+        ${x.id !== PIANO_BASE ? `<button data-f-elimina="${tipo}|${x.id}">Elimina</button>` : ""}
+      </div>
+    </div>`).join("");
+  return `<section class="card">
+    <p class="eyebrow">${tipo === "scheda" ? "Scheda di allenamento" : "Dieta"}</p>
+    <div class="piani">${righe}</div>
+    <div class="row-btns">
+      <label class="btn primary">Carica file<input type="file" accept=".txt,.pdf,.json,text/plain,application/pdf,application/json" data-f-file="${tipo}" hidden></label>
+      <button class="btn" data-f-nuova="${tipo}">Crea a mano</button>
+    </div>
+    ${foglio.caricamento === tipo ? `<p class="f-stato">Sto leggendo il file…</p>` : ""}
+    ${foglio.errore && foglio.erroreTipo === tipo ? `<p class="f-errore">${esc(foglio.errore)}</p>` : ""}
+  </section>`;
+}
+
+const campo = (p, v, o = {}) => o.area
+  ? `<textarea class="in" data-p="${p}" rows="${o.righe || 3}" placeholder="${esc(o.ph || "")}">${esc(v ?? "")}</textarea>`
+  : `<input class="in${o.cls ? " " + o.cls : ""}" data-p="${p}" ${o.num ? 'data-num type="number" inputmode="numeric" min="0"' : 'type="text"'} value="${esc(v ?? "")}" placeholder="${esc(o.ph || "")}">`;
+const etichetta = (testo, dentro) => `<label class="f-lbl"><span>${testo}</span>${dentro}</label>`;
+
+function editorScheda(b) {
+  let h = `<section class="card">
+    ${etichetta("Nome della scheda", campo("nome", b.nome, { ph: "Es. Scheda massa" }))}
+    ${etichetta("Note e consigli", campo("note", b.note, { area: true, ph: "Facoltative: compaiono in «Come allenarti»" }))}
+  </section>`;
+  b.giorni.forEach((g, i) => {
+    const opz = `<option value="">Scegli…</option>` + NOMI_SETT.map(([d, n]) => `<option value="${d}" ${String(g.dow) === String(d) ? "selected" : ""}>${n}</option>`).join("");
+    h += `<section class="card f-giorno">
+      <div class="f-head"><p class="eyebrow">Giorno ${i + 1}</p><button class="f-rimuovi" data-rm="giorni.${i}">Elimina giorno</button></div>
+      ${etichetta("Nome del giorno", campo(`giorni.${i}.titolo`, g.titolo, { ph: "Es. Petto e tricipiti" }))}
+      <div class="f-grid2">
+        ${etichetta("Giorno della settimana", `<select class="in" data-p="giorni.${i}.dow" data-num>${opz}</select>`)}
+        ${etichetta("Cardio (minuti)", campo(`giorni.${i}.cardioMin`, g.cardioMin, { num: true, ph: "0" }))}
+      </div>
+      ${etichetta("Cardio finale", campo(`giorni.${i}.cardio`, g.cardio, { ph: "Facoltativo, es. 15 min cyclette" }))}
+      <div class="f-lista">${g.esercizi.map((e, j) => {
+        const p = `giorni.${i}.esercizi.${j}`;
+        return `<div class="f-voce">
+          <div class="f-voce-top">${campo(p + ".nome", e.nome, { ph: "Nome esercizio", cls: "in-forte" })}<button class="f-x" data-rm="${p}" aria-label="Elimina esercizio">✕</button></div>
+          <div class="f-grid3">
+            ${etichetta("Serie", campo(p + ".serie", e.serie, { num: true }))}
+            ${etichetta("Ripetizioni", campo(p + ".reps", e.reps, { ph: "8-10" }))}
+            ${etichetta("Recupero (s)", campo(p + ".recupero", e.recupero, { num: true }))}
+          </div>
+          <div class="f-grid2">
+            ${etichetta("Gruppo", campo(p + ".gruppo", e.gruppo, { ph: "Es. Petto" }))}
+            ${etichetta("Note", campo(p + ".note", e.note, { ph: "Facoltative" }))}
+          </div>
+        </div>`;
+      }).join("")}</div>
+      <button class="f-add" data-add="giorni.${i}.esercizi">+ Aggiungi esercizio</button>
+    </section>`;
+  });
+  return h + `<button class="btn f-add-grande" data-add="giorni">+ Aggiungi giorno</button>`;
+}
+
+function editorDieta(b) {
+  let h = `<section class="card">
+    ${etichetta("Nome della dieta", campo("nome", b.nome, { ph: "Es. Dieta definizione" }))}
+    ${etichetta("Obiettivo", campo("obiettivo", b.obiettivo, { ph: "Es. 2.000 kcal · 130 g di proteine" }))}
+    ${etichetta("Regole e consigli", campo("note", b.note, { area: true, ph: "Facoltative: compaiono in «Regole della dieta»" }))}
+  </section>`;
+  b.pasti.forEach((p, i) => {
+    h += `<section class="card f-giorno">
+      <div class="f-head"><p class="eyebrow">Pasto ${i + 1}</p><button class="f-rimuovi" data-rm="pasti.${i}">Elimina pasto</button></div>
+      ${etichetta("Nome del pasto", campo(`pasti.${i}.nome`, p.nome, { ph: "Es. Pranzo" }))}
+      <div class="f-grid2">
+        ${etichetta("Orario", campo(`pasti.${i}.ora`, p.ora, { ph: "Es. 13:00" }))}
+        ${etichetta("Calorie", campo(`pasti.${i}.kcal`, p.kcal, { ph: "Es. ~500 kcal" }))}
+      </div>
+      ${etichetta("Note", campo(`pasti.${i}.note`, p.note, { ph: "Facoltative" }))}
+      ${p.opzioni.map((o, k) => {
+        const q = `pasti.${i}.opzioni.${k}`;
+        return `<div class="f-opz">
+          <div class="f-voce-top">${campo(q + ".nome", o.nome, { ph: p.opzioni.length > 1 ? `Alternativa ${k + 1}` : "Nome (facoltativo)", cls: "in-forte" })}${p.opzioni.length > 1 ? `<button class="f-x" data-rm="${q}" aria-label="Elimina alternativa">✕</button>` : ""}</div>
+          ${o.alimenti.map((a, n) => `<div class="f-alimento">
+            ${campo(`${q}.alimenti.${n}.nome`, a.nome, { ph: "Alimento" })}
+            ${campo(`${q}.alimenti.${n}.qta`, a.qta, { ph: "Quantità", cls: "in-qta" })}
+            <button class="f-x" data-rm="${q}.alimenti.${n}" aria-label="Elimina alimento">✕</button>
+          </div>`).join("")}
+          <button class="f-add" data-add="${q}.alimenti">+ Aggiungi alimento</button>
+        </div>`;
+      }).join("")}
+      <button class="f-add" data-add="pasti.${i}.opzioni">+ Aggiungi alternativa</button>
+    </section>`;
+  });
+  return h + `<button class="btn f-add-grande" data-add="pasti">+ Aggiungi pasto</button>`;
+}
+
+function renderFoglio() {
+  const el = $("#foglio");
+  let testa, corpo;
+  if (foglio.vista === "menu") {
+    testa = `<span></span><h2>Le mie schede</h2><button class="fh-btn forte" data-f-chiudi>Fine</button>`;
+    corpo = `<p class="f-intro">Scegli quale scheda e quale dieta usare. Puoi caricarne una da un file <b>TXT</b> o <b>PDF</b>: la leggo io e la compilo da sola, tu controlli e salvi.</p>
+      ${sezionePiani("scheda")}${sezionePiani("dieta")}`;
+  } else {
+    const t = foglio.tipo === "scheda";
+    testa = `<button class="fh-btn" data-f-indietro>Annulla</button><h2>${t ? "Scheda" : "Dieta"}</h2><button class="fh-btn forte" data-f-salva>Salva</button>`;
+    // i tre avvisi hanno sempre il loro posto (vuoto se non servono), così i campi sotto non si spostano
+    corpo = `<div class="f-slot">${foglio.avviso ? `<div class="f-avviso">${foglio.avviso}</div>` : ""}</div>` +
+      `<div class="f-slot">${foglio.ignorate.length ? `<div class="f-avviso giallo"><b>Queste righe non le ho capite</b>: se servono, aggiungile a mano.<ul>${foglio.ignorate.map(r => `<li>${esc(r)}</li>`).join("")}</ul></div>` : ""}</div>` +
+      `<div class="f-slot">${foglio.errore && foglio.erroreTipo === "editor" ? `<p class="f-errore">${esc(foglio.errore)}</p>` : ""}</div>` +
+      (t ? editorScheda(foglio.bozza) : editorDieta(foglio.bozza)) +
+      `<button class="btn primary f-salva-fondo" data-f-salva>Salva</button>`;
+  }
+  const nuovo = document.createElement("div");
+  nuovo.innerHTML = `<div class="foglio-testa">${testa}</div><div class="foglio-corpo">${corpo}</div>`;
+  if (!el.children.length) el.append(...nuovo.children);
+  else patchFigli(el, nuovo);
+}
+
+function apriFoglio() {
+  Object.assign(foglio, { aperto: true, vista: "menu", errore: "", caricamento: "" });
+  $("#foglio").innerHTML = "";
+  renderFoglio();
+  $("#foglio").classList.add("aperto");
+  document.body.classList.add("bloccato");
+}
+function chiudiFoglio() {
+  foglio.aperto = false;
+  $("#foglio").classList.remove("aperto");
+  document.body.classList.remove("bloccato");
+}
+function vistaFoglio(vista) {
+  foglio.vista = vista;
+  $("#foglio").innerHTML = "";
+  renderFoglio();
+  const c = $("#foglio .foglio-corpo");
+  if (c) { c.scrollTop = 0; entra([...c.children].slice(0, 6)); }
+}
+
+function apriEditor(tipo, dati, id, ignorate = [], avviso = "") {
+  const b = copia(dati);
+  // l'editor lavora sempre con almeno un elemento per livello
+  if (tipo === "scheda") {
+    b.giorni = (b.giorni || []).map(g => ({ titolo: g.titolo || g.nome || "", dow: g.dow ?? "", cardio: g.cardio || "", cardioMin: g.cardioMin || "", esercizi: (g.esercizi || []).map(e => ({ ...NUOVI.esercizi(), ...e })) }));
+    if (!b.giorni.length) b.giorni.push(NUOVI.giorni());
+  } else {
+    b.pasti = (b.pasti || []).map(p => ({ nome: p.nome || "", ora: p.ora || "", kcal: p.kcal || "", note: p.note || "",
+      opzioni: p.opzioni && p.opzioni.length ? p.opzioni.map(o => ({ nome: o.nome || "", alimenti: (o.alimenti || []).map(a => ({ nome: a.nome || "", qta: a.qta || "" })) }))
+        : [{ nome: "", alimenti: (p.alimenti || []).map(a => ({ nome: a.nome || "", qta: a.qta || "" })) }] }));
+    if (!b.pasti.length) b.pasti.push(NUOVI.pasti());
+  }
+  Object.assign(foglio, { tipo, bozza: b, id, ignorate, avviso, errore: "", erroreTipo: "" });
+  vistaFoglio("editor");
+}
+
+// pulisce la bozza prima di salvarla; restituisce un messaggio se manca qualcosa
+function preparaScheda(b) {
+  const giorni = b.giorni.map((g, i) => {
+    const titolo = String(g.titolo || "").trim() || `Giorno ${i + 1}`;
+    return {
+      nome: titolo, titolo, dow: g.dow === "" || g.dow == null ? null : Number(g.dow),
+      cardio: String(g.cardio || "").trim(), cardioMin: parseInt(g.cardioMin) || 0,
+      esercizi: g.esercizi.filter(e => String(e.nome || "").trim()).map(e => ({
+        gruppo: String(e.gruppo || "").trim(), nome: String(e.nome).trim(),
+        serie: Math.min(20, Math.max(1, parseInt(e.serie) || 3)), reps: String(e.reps || "").trim() || "10",
+        recupero: Math.max(0, parseInt(e.recupero) || 90), note: String(e.note || "").trim()
+      }))
+    };
+  }).filter(g => g.esercizi.length);
+  if (!giorni.length) return { errore: "Aggiungi almeno un esercizio con il nome." };
+  const visti = {};
+  for (const g of giorni) {
+    if (g.dow === null) return { errore: `Scegli il giorno della settimana per «${g.titolo}».` };
+    if (visti[g.dow]) return { errore: `«${visti[g.dow]}» e «${g.titolo}» sono tutti e due di ${NOMI_GIORNI[g.dow]}: cambiane uno.` };
+    visti[g.dow] = g.titolo;
+  }
+  giorni.sort((a, b) => ((a.dow + 6) % 7) - ((b.dow + 6) % 7));
+  return { dati: { nome: String(b.nome || "").trim() || "La mia scheda", note: String(b.note || "").trim(), giorni } };
+}
+function preparaDieta(b) {
+  const pasti = b.pasti.map((p, i) => ({
+    nome: String(p.nome || "").trim() || `Pasto ${i + 1}`, ora: String(p.ora || "").trim(), kcal: String(p.kcal || "").trim(), note: String(p.note || "").trim(),
+    opzioni: p.opzioni.map((o, k) => ({
+      nome: String(o.nome || "").trim() || `Opzione ${k + 1}`,
+      alimenti: o.alimenti.filter(a => String(a.nome || "").trim()).map(a => ({ nome: String(a.nome).trim(), qta: String(a.qta || "").trim() }))
+    })).filter(o => o.alimenti.length)
+  })).filter(p => p.opzioni.length);
+  if (!pasti.length) return { errore: "Aggiungi almeno un pasto con un alimento." };
+  return { dati: { nome: String(b.nome || "").trim() || "La mia dieta", obiettivo: String(b.obiettivo || "").trim(), note: String(b.note || "").trim(), pasti } };
+}
+
+function salvaBozza() {
+  const r = foglio.tipo === "scheda" ? preparaScheda(foglio.bozza) : preparaDieta(foglio.bozza);
+  foglio.errore = "";
+  if (r.errore) {
+    Object.assign(foglio, { errore: r.errore, erroreTipo: "editor" });
+    renderFoglio();
+    const e = $("#foglio .f-errore");
+    if (e) { e.scrollIntoView({ behavior: "smooth", block: "center" }); pop(e); }
+    return;
+  }
+  const p = getPiani(), lista = p[listaDi(foglio.tipo)];
+  const id = foglio.id && foglio.id !== PIANO_BASE ? foglio.id : nuovoId();
+  const i = lista.findIndex(x => x.id === id);
+  if (i >= 0) lista[i] = { id, ...r.dati }; else lista.push({ id, ...r.dati });
+  p[foglio.tipo] = id;
+  store.set("piani", p);
+  if (foglio.tipo === "scheda") vaiAOggi();
+  Object.assign(foglio, { bozza: null, avviso: "", ignorate: [] });
+  vistaFoglio("menu");
+  render();
+}
+
+async function caricaFile(file, tipo) {
+  Object.assign(foglio, { caricamento: tipo, errore: "", erroreTipo: "" });
+  renderFoglio();
+  try {
+    const nome = file.name.toLowerCase();
+    const pdf = nome.endsWith(".pdf") || file.type === "application/pdf";
+    if (nome.endsWith(".json") || file.type === "application/json") {
+      let j;
+      try { j = JSON.parse(await file.text()); } catch { throw new Error("Questo file non si riesce a leggere."); }
+      if (j.formato !== "palestra" || !j.dati) throw new Error("Questo file non è una scheda o una dieta dell'app.");
+      if (j.tipo !== tipo) throw new Error(j.tipo === "dieta" ? "Questo file è una dieta: caricalo nella sezione Dieta." : "Questo file è una scheda: caricalo nella sezione Scheda di allenamento.");
+      apriEditor(tipo, j.dati, null, [], "Ecco la scheda che ti hanno mandato. Controlla e premi <b>Salva</b>.".replace("la scheda", tipo === "scheda" ? "la scheda" : "la dieta"));
+      return;
+    }
+    const testo = pdf ? await testoDaPdf(file) : await file.text();
+    if (!testo.trim()) throw new Error(pdf ? "Questo PDF non contiene testo (probabilmente è una foto o una scansione). Prova con un file TXT oppure creala a mano." : "Il file è vuoto.");
+    const r = tipo === "scheda" ? leggiScheda(testo) : leggiDieta(testo);
+    if (!r.trovati) throw new Error(tipo === "scheda"
+      ? "Non ho trovato esercizi in questo file. Ogni esercizio deve avere serie e ripetizioni, per esempio «Panca piana 4x8 rec 90»."
+      : "Non ho trovato pasti in questo file. Servono i nomi dei pasti (Colazione, Pranzo…) e gli alimenti con le quantità.");
+    if (!r.dati.nome) r.dati.nome = file.name.replace(/\.[^.]+$/, "");
+    const quanti = tipo === "scheda" ? riassunto("scheda", r.dati) : riassunto("dieta", r.dati);
+    const avviso = `Ho letto il file: <b>${esc(quanti)}</b>. Controlla che sia tutto giusto, correggi se serve e premi <b>Salva</b>.` +
+      (r.giorniAssegnati ? " Il file non diceva i giorni della settimana: li ho scelti io, cambiali se vuoi." : "");
+    apriEditor(tipo, r.dati, null, r.ignorate, avviso);
+  } catch (err) {
+    Object.assign(foglio, { errore: err.message || "Non sono riuscito a leggere il file.", erroreTipo: tipo });
+  } finally {
+    foglio.caricamento = "";
+    if (foglio.vista === "menu") renderFoglio();
+  }
+}
+
+function inviaPiano(tipo, id) {
+  const x = id === PIANO_BASE ? baseDi(tipo) : getPiani()[listaDi(tipo)].find(p => p.id === id);
+  if (!x) return;
+  const { id: _, ...dati } = x;
+  const blob = new Blob([JSON.stringify({ formato: "palestra", tipo, dati })], { type: "application/json" });
+  const nomeFile = `${tipo}-${slug(x.nome) || tipo}.json`;
+  const file = new File([blob], nomeFile, { type: "application/json" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: x.nome }).catch(() => {});
+  } else {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = nomeFile; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+}
+
+function clickFoglio(t, ds) {
+  if (ds.fChiudi !== undefined) return chiudiFoglio();
+  if (ds.fIndietro !== undefined) return vistaFoglio("menu");
+  if (ds.fSalva !== undefined) return salvaBozza();
+  if (ds.fNuova) return apriEditor(ds.fNuova, vuoto(ds.fNuova), null);
+  const [tipo, id] = (ds.fUsa || ds.fModifica || ds.fInvia || ds.fElimina || "|").split("|");
+  if (ds.fUsa) {
+    const p = getPiani();
+    if (p[tipo] === id) return;
+    p[tipo] = id; store.set("piani", p);
+    if (tipo === "scheda") vaiAOggi();
+    renderFoglio(); render();
+    pop(t.querySelector(".radio"));
+    return;
+  }
+  if (ds.fModifica) {
+    const x = id === PIANO_BASE ? baseDi(tipo) : getPiani()[listaDi(tipo)].find(p => p.id === id);
+    if (x) apriEditor(tipo, x, id === PIANO_BASE ? null : id, [], id === PIANO_BASE ? "Salvando creerai una tua copia: quella di base resta com'è." : "");
+    return;
+  }
+  if (ds.fInvia) return inviaPiano(tipo, id);
+  if (ds.fElimina) {
+    if (!chiediConferma(t, "Sicuro?")) return;
+    const p = getPiani();
+    p[listaDi(tipo)] = p[listaDi(tipo)].filter(x => x.id !== id);
+    if (p[tipo] === id) p[tipo] = PIANO_BASE;
+    store.set("piani", p);
+    if (tipo === "scheda") vaiAOggi();
+    renderFoglio(); render();
+    return;
+  }
+  if (ds.add) {
+    const lista = percorso(foglio.bozza, ds.add);
+    const chiave = ds.add.split(".").pop();
+    if (!Array.isArray(lista) || !NUOVI[chiave]) return;
+    lista.push(NUOVI[chiave]());
+    renderFoglio();
+    // il nuovo elemento entra e viene portato in vista
+    const nuovo = document.querySelector(`#foglio [data-p^="${ds.add}.${lista.length - 1}."]`);
+    const blocco = nuovo && nuovo.closest(".f-voce, .f-alimento, .f-opz, .f-giorno");
+    if (blocco) { entra([blocco]); blocco.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
+    return;
+  }
+  if (ds.rm) {
+    const k = ds.rm.split("."), i = +k.pop();
+    const lista = percorso(foglio.bozza, k.join("."));
+    if (!Array.isArray(lista)) return;
+    // giorni e pasti interi: chiedi conferma; esercizi e alimenti: subito
+    if (["giorni", "pasti"].includes(k[k.length - 1]) && !chiediConferma(t, "Tocca di nuovo per eliminare")) return;
+    const blocco = t.closest(".f-voce, .f-alimento, .f-opz, .f-giorno");
+    const togli = () => { lista.splice(i, 1); if (!lista.length) lista.push(NUOVI[k[k.length - 1]]()); renderFoglio(); };
+    if (blocco && !RIDUCI) blocco.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.96)" }], { duration: 180, easing: "ease-in" }).onfinish = togli;
+    else togli();
+  }
+}
+
 // primo tocco: il pulsante diventa rosso e chiede conferma per 3 secondi; secondo tocco: true
 function chiediConferma(btn, testo) {
   if (btn.classList.contains("conferma")) { clearTimeout(btn._t); return true; }
@@ -527,6 +902,8 @@ document.addEventListener("click", e => {
   if (!t) return;
   const ds = t.dataset;
 
+  if (t.closest("#foglio")) { clickFoglio(t, ds); return; }
+  if (ds.fApri !== undefined) { apriFoglio(); return; }
   if (ds.tab) { vaiTab(ds.tab); return; }
   if (ds.giorno !== undefined) {
     if (+ds.giorno === state.giorno) return;
@@ -577,10 +954,10 @@ document.addEventListener("click", e => {
 
   if (ds.opzione) {
     const [i, k] = ds.opzione.split(":").map(Number);
-    const scelte = store.get("scelte", {});
+    const scelte = store.get(chiaveScelte(), {});
     if (scelte[i] === k || (!scelte[i] && k === 0)) return;
     scelte[i] = k;
-    store.set("scelte", scelte);
+    store.set(chiaveScelte(), scelte);
     render();
     const pasto = t.closest(".meal");
     if (pasto && !RIDUCI) pasto.querySelectorAll(".foods li, .meal-note").forEach((el, n) => el.animate(
@@ -620,6 +997,14 @@ document.addEventListener("change", e => {
   if (t.matches("input[data-kg]")) salvaKg(t);
   if (t.id === "sel-esercizio") { state.esercizioGrafico = t.value; store.set("esGrafico", t.value); render(); }
   if (t.id === "importa" && t.files[0]) importaDati(t.files[0]);
+  if (t.dataset.fFile && t.files[0]) { caricaFile(t.files[0], t.dataset.fFile); t.value = ""; }
+});
+
+// l'editor scrive direttamente nella bozza mentre digiti
+document.addEventListener("input", e => {
+  const el = e.target;
+  if (!foglio.bozza || !el.dataset || !el.dataset.p || !el.closest("#foglio")) return;
+  impostaPercorso(foglio.bozza, el.dataset.p, el.hasAttribute("data-num") ? (el.value === "" ? "" : Number(el.value)) : el.value);
 });
 
 // ricorda quali tendine sono aperte o chiuse
