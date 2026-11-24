@@ -642,7 +642,22 @@ document.addEventListener("touchstart", () => {}, { passive: true });
 
 $("#oggi").textContent = new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
 render();
-entra([$(".top"), ...$("#view").children]);
+
+// schermata di apertura: resta un attimo, poi sfuma e l'app entra (un tocco la salta)
+(() => {
+  const s = $("#splash");
+  if (!s) return entra([$(".top"), ...$("#view").children]);
+  let chiusa = false;
+  const chiudi = () => {
+    if (chiusa) return;
+    chiusa = true;
+    s.classList.add("esce");
+    entra([$(".top"), ...$("#view").children]);
+    setTimeout(() => s.remove(), 700);
+  };
+  s.addEventListener("click", chiudi);
+  setTimeout(chiudi, RIDUCI ? 600 : 1500);
+})();
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("sw.js").catch(() => {});

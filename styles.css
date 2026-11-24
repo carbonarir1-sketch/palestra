@@ -297,6 +297,22 @@ details.nota p { margin: 8px 0 0; color: var(--muted); font-size: 14px; line-hei
 .tabs svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .tabs button.on { color: var(--accent); }
 
+/* Schermata di apertura */
+.splash {
+  position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: var(--bg); padding-bottom: 6vh;
+}
+.splash-logo {
+  width: 112px; height: 112px; border-radius: 26px;
+  box-shadow: 0 0 0 1px var(--line), 0 20px 60px color-mix(in srgb, var(--accent) 25%, transparent);
+  animation: splash-logo .9s var(--spring) both;
+}
+.splash-nome { margin: 22px 0 0; font: 800 34px/1.1 var(--round); letter-spacing: -.02em; animation: splash-testo .8s var(--ease) .25s both; }
+.splash-by { margin: 6px 0 0; color: var(--muted); font-size: 14px; font-weight: 600; letter-spacing: .04em; animation: splash-testo .8s var(--ease) .4s both; }
+.splash.esce { opacity: 0; transform: scale(1.06); pointer-events: none; transition: opacity .5s var(--ease), transform .6s var(--ease); }
+@keyframes splash-logo { from { opacity: 0; transform: scale(.6); } }
+@keyframes splash-testo { from { opacity: 0; transform: translateY(10px); } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }

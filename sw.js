@@ -1,5 +1,5 @@
 // Rete prima (così vedi subito scheda/dieta aggiornate), cache se sei offline.
-const CACHE = "palestra-v4";
+const CACHE = "palestra-v5";
 const FILES = ["./", "index.html", "styles.css", "app.js", "data.js", "manifest.webmanifest", "icon-180.png", "icon-512.png"];
 
 self.addEventListener("install", e => {
