@@ -26,6 +26,18 @@ const CHEV = `<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></sv
 const CUORE = `<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.5-9.3C1.1 8.4 3.2 5 6.6 5c2 0 3.4 1.1 4.2 2.3h2.4C14 6.1 15.4 5 17.4 5c3.4 0 5.5 3.4 4.1 6.7C19.5 16.4 12 21 12 21z"/></svg>`;
 const NOMI_GIORNI = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
 
+// chi apre l'app la prima volta: niente scheda né dieta, solo l'invito a crearle
+const benvenuto = tipo => `<section class="benvenuto">
+    <div class="bv-ico">${tipo === "scheda"
+      ? `<svg viewBox="0 0 24 24"><path d="M3 10v4M6 7v10M18 7v10M21 10v4M6 12h12"/></svg>`
+      : `<svg viewBox="0 0 24 24"><path d="M7 3v8a2 2 0 0 0 4 0V3M9 11v10M17 3c-2 2-2 6 0 8v10"/></svg>`}</div>
+    <h2>${tipo === "scheda" ? "Nessuna scheda, per ora" : "Nessuna dieta, per ora"}</h2>
+    <p>${tipo === "scheda"
+      ? "Carica la tua scheda da un PDF o un TXT, oppure scrivila a mano: qui troverai l'allenamento del giorno, il timer e i tuoi pesi."
+      : "Carica la tua dieta da un PDF o un TXT, oppure scrivila a mano: qui troverai i pasti del giorno da spuntare."}</p>
+    <button class="btn primary" data-f-apri="${tipo}">${tipo === "scheda" ? "Crea la tua scheda" : "Crea la tua dieta"}</button>
+  </section>`;
+
 const empty = (titolo, testo) => `<div class="empty"><h3>${esc(titolo)}</h3><p>${esc(testo)}</p></div>`;
 
 // ---------- schede e diete: quella di base (data.js) + quelle caricate o create nell'app ----------
@@ -121,7 +133,7 @@ function rigaEsercizio(e, pesi, fatte) {
 function viewAllenamento() {
   const S = schedaAttiva();
   const giorni = S.giorni || [];
-  if (!giorni.length) return empty("Scheda in costruzione", "La stiamo preparando insieme: appena è pronta la trovi qui.");
+  if (!giorni.length) return benvenuto("scheda");
   if (state.giorno >= giorni.length) state.giorno = 0;
   const g = giorni[state.giorno];
   const es = g.esercizi || [];
@@ -206,7 +218,7 @@ function anello(frazione) {
 function viewDieta() {
   const D = dietaAttiva();
   const pasti = D.pasti || [];
-  if (!pasti.length) return empty("Dieta in costruzione", "La stiamo preparando insieme: appena è pronta la trovi qui.");
+  if (!pasti.length) return benvenuto("dieta");
   const spunte = store.get("pasti_" + today(), {});
   const fatti = pasti.filter((_, i) => spunte[i]).length;
   const scelte = store.get(chiaveScelte(), {});
@@ -519,30 +531,70 @@ function riassunto(tipo, x) {
   return `${n} ${n === 1 ? "pasto" : "pasti"}${x.obiettivo ? " · " + x.obiettivo.replace(/^≈\s*/, "") : ""}`;
 }
 
-function sezionePiani(tipo) {
-  const p = getPiani(), attivo = p[tipo];
-  const tutti = [{ id: PIANO_BASE, ...baseDi(tipo) }, ...p[listaDi(tipo)]];
-  const righe = tutti.map(x => `<div class="piano${x.id === attivo ? " on" : ""}">
-      <button class="piano-sel" data-f-usa="${tipo}|${x.id}">
-        <span class="radio">${CHECK}</span>
-        <span class="piano-txt"><b>${esc(x.nome)}</b><small>${esc(riassunto(tipo, x))}</small></span>
-      </button>
-      <div class="piano-az">
-        <button data-f-modifica="${tipo}|${x.id}">Modifica</button>
-        <button data-f-invia="${tipo}|${x.id}">Invia</button>
-        ${x.id !== PIANO_BASE ? `<button data-f-elimina="${tipo}|${x.id}">Elimina</button>` : ""}
-      </div>
-    </div>`).join("");
-  return `<section class="card">
-    <p class="eyebrow">${tipo === "scheda" ? "Scheda di allenamento" : "Dieta"}</p>
-    <div class="piani">${righe}</div>
-    <div class="row-btns">
-      <label class="btn primary">Carica file<input type="file" accept=".txt,.pdf,.json,text/plain,application/pdf,application/json" data-f-file="${tipo}" hidden></label>
-      <button class="btn" data-f-nuova="${tipo}">Crea a mano</button>
+// ---- schermate del menu ----
+const ICONE = {
+  scheda: `<svg viewBox="0 0 24 24"><path d="M3 10v4M6 7v10M18 7v10M21 10v4M6 12h12"/></svg>`,
+  dieta: `<svg viewBox="0 0 24 24"><path d="M7 3v8a2 2 0 0 0 4 0V3M9 11v10M17 3c-2 2-2 6 0 8v10"/></svg>`,
+  file: `<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 18v-6M9 14l3-3 3 3"/></svg>`,
+  penna: `<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>`,
+  freccia: `<svg class="m-freccia" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>`
+};
+const haPiano = tipo => getPiani()[tipo] !== PIANO_BASE && !!getPiani()[listaDi(tipo)].find(x => x.id === getPiani()[tipo]);
+const NOME_TIPO = { scheda: "scheda", dieta: "dieta" };
+
+function vistaMenu() {
+  const card = tipo => {
+    const c = haPiano(tipo);
+    return `<button class="m-card" data-f-crea="${tipo}">
+      <span class="m-ico">${ICONE[tipo]}</span>
+      <span class="m-txt"><b>Nuova ${NOME_TIPO[tipo]}</b><small>${c ? "Prende il posto di quella che usi ora" : tipo === "scheda" ? "Giorni, esercizi, serie e recuperi" : "Pasti, alimenti e alternative"}</small></span>
+      ${ICONE.freccia}
+    </button>`;
+  };
+  const inUso = ["scheda", "dieta"].filter(haPiano).map(tipo => {
+    const x = pianoAttivo(tipo);
+    return `<div class="m-uso">
+      <span class="m-uso-ico">${ICONE[tipo]}</span>
+      <span class="m-txt"><b>${esc(x.nome)}</b><small>${esc(riassunto(tipo, x))}</small></span>
+      <button data-f-modifica="${tipo}">Modifica</button>
+      <button data-f-invia="${tipo}" aria-label="Invia a un amico">Invia</button>
+    </div>`;
+  }).join("");
+  return `<div class="m-hero"><p class="eyebrow">Menu</p><h2>Cosa vuoi fare?</h2></div>
+    ${card("scheda")}${card("dieta")}
+    ${inUso ? `<p class="m-sez">In uso su questo telefono</p><div class="m-lista">${inUso}</div>` : ""}
+    <p class="m-nota">Tutto resta salvato solo su questo telefono: nessun altro lo vede.</p>`;
+}
+
+function vistaCrea(tipo) {
+  return `<div class="m-hero"><p class="eyebrow">Nuova ${NOME_TIPO[tipo]}</p><h2>Come la vuoi creare?</h2></div>
+    <label class="m-card m-grande">
+      <span class="m-ico">${ICONE.file}</span>
+      <span class="m-txt"><b>Carica un file</b><small>PDF o TXT: lo leggo io e la salvo da sola</small></span>
+      ${ICONE.freccia}
+      <input type="file" accept=".txt,.pdf,.json,text/plain,application/pdf,application/json" data-f-file="${tipo}" hidden>
+    </label>
+    <button class="m-card" data-f-nuova="${tipo}">
+      <span class="m-ico">${ICONE.penna}</span>
+      <span class="m-txt"><b>Scrivila a mano</b><small>${tipo === "scheda" ? "Aggiungi giorni ed esercizi uno per uno" : "Aggiungi pasti e alimenti uno per uno"}</small></span>
+      ${ICONE.freccia}
+    </button>
+    <div class="f-slot">${foglio.caricamento ? `<div class="m-carica"><span class="m-spinner"></span>Sto leggendo il file…</div>` : ""}</div>
+    <div class="f-slot">${foglio.errore ? `<p class="f-errore">${esc(foglio.errore)}</p>` : ""}</div>`;
+}
+
+function vistaFatto() {
+  const f = foglio.fatto;
+  const righe = f.tipi.map(tipo => `<p class="m-fatto-riga">${ICONE[tipo]}<span><b>${esc(pianoAttivo(tipo).nome)}</b><small>${esc(riassunto(tipo, pianoAttivo(tipo)))}</small></span></p>`).join("");
+  return `<div class="m-fatto">
+      <div class="m-check">${CHECK}</div>
+      <h2>${f.titolo}</h2>
+      ${righe}
     </div>
-    ${foglio.caricamento === tipo ? `<p class="f-stato">Sto leggendo il file…</p>` : ""}
-    ${foglio.errore && foglio.erroreTipo === tipo ? `<p class="f-errore">${esc(foglio.errore)}</p>` : ""}
-  </section>`;
+    ${f.avviso ? `<div class="f-avviso">${f.avviso}</div>` : ""}
+    ${f.ignorate && f.ignorate.length ? `<div class="f-avviso giallo"><b>Queste righe non le ho capite</b>: se servono, aggiungile con «Controlla e modifica».<ul>${f.ignorate.map(r => `<li>${esc(r)}</li>`).join("")}</ul></div>` : ""}
+    <button class="btn primary m-azione" data-f-vai="${f.tipi[0]}">Vai alla ${NOME_TIPO[f.tipi[0]]}</button>
+    <button class="btn m-azione" data-f-modifica="${f.tipi[0]}">Controlla e modifica</button>`;
 }
 
 const campo = (p, v, o = {}) => o.area
@@ -622,10 +674,10 @@ function editorDieta(b) {
 function renderFoglio() {
   const el = $("#foglio");
   let testa, corpo;
-  if (foglio.vista === "menu") {
-    testa = `<span></span><h2>Le mie schede</h2><button class="fh-btn forte" data-f-chiudi>Fine</button>`;
-    corpo = `<p class="f-intro">Scegli quale scheda e quale dieta usare. Puoi caricarne una da un file <b>TXT</b> o <b>PDF</b>: la leggo io e la compilo da sola, tu controlli e salvi.</p>
-      ${sezionePiani("scheda")}${sezionePiani("dieta")}`;
+  const chiudi = `<button class="fh-x" data-f-chiudi aria-label="Chiudi"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`;
+  if (foglio.vista !== "editor") {
+    testa = (foglio.vista === "crea" ? `<button class="fh-btn" data-f-indietro>Indietro</button>` : `<span></span>`) + `<span></span>` + chiudi;
+    corpo = foglio.vista === "crea" ? vistaCrea(foglio.tipo) : foglio.vista === "fatto" ? vistaFatto() : vistaMenu();
   } else {
     const t = foglio.tipo === "scheda";
     testa = `<button class="fh-btn" data-f-indietro>Annulla</button><h2>${t ? "Scheda" : "Dieta"}</h2><button class="fh-btn forte" data-f-salva>Salva</button>`;
@@ -642,24 +694,50 @@ function renderFoglio() {
   else patchFigli(el, nuovo);
 }
 
-function apriFoglio() {
-  Object.assign(foglio, { aperto: true, vista: "menu", errore: "", caricamento: "" });
+// il menu "esplode" a cerchio dal pulsante in alto e ci si richiude dentro
+function centroPulsante(origine) {
+  const b = (origine || $(".menu-btn")).getBoundingClientRect();
+  const x = b.left + b.width / 2, y = b.top + b.height / 2;
+  const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y)) + 20;
+  const f = $("#foglio");
+  f.style.setProperty("--cx", x + "px");
+  f.style.setProperty("--cy", y + "px");
+  f.style.setProperty("--r", r + "px");
+}
+function apriFoglio(vista = "menu", tipo, origine) {
+  Object.assign(foglio, { aperto: true, vista, errore: "", caricamento: "" });
+  if (tipo) foglio.tipo = tipo;
+  centroPulsante(origine);
   $("#foglio").innerHTML = "";
   renderFoglio();
+  void $("#foglio").offsetWidth;
   $("#foglio").classList.add("aperto");
   document.body.classList.add("bloccato");
+  const c = $("#foglio .foglio-corpo");
+  if (c && !RIDUCI) [...c.children].forEach((el, i) => el.animate(
+    [{ opacity: 0, transform: "translateY(26px) scale(.96)" }, { opacity: 1, transform: "none" }],
+    { duration: 650, delay: 180 + i * 70, easing: EASE, fill: "backwards" }));
 }
 function chiudiFoglio() {
   foglio.aperto = false;
+  centroPulsante();
   $("#foglio").classList.remove("aperto");
   document.body.classList.remove("bloccato");
+  pop($(".menu-btn"));
 }
 function vistaFoglio(vista) {
+  const c0 = $("#foglio .foglio-corpo");
   foglio.vista = vista;
-  $("#foglio").innerHTML = "";
-  renderFoglio();
-  const c = $("#foglio .foglio-corpo");
-  if (c) { c.scrollTop = 0; entra([...c.children].slice(0, 6)); }
+  const cambia = () => {
+    if (foglio.vista !== vista) return;
+    $("#foglio").innerHTML = "";
+    renderFoglio();
+    const c = $("#foglio .foglio-corpo");
+    if (c) { c.scrollTop = 0; entra([...c.children].slice(0, 7)); }
+  };
+  // la schermata vecchia scivola via, la nuova entra
+  if (c0 && !RIDUCI) c0.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(-24px)" }], { duration: 150, easing: "ease-in", fill: "forwards" }).onfinish = cambia;
+  else cambia();
 }
 
 function apriEditor(tipo, dati, id, ignorate = [], avviso = "") {
@@ -674,8 +752,24 @@ function apriEditor(tipo, dati, id, ignorate = [], avviso = "") {
         : [{ nome: "", alimenti: (p.alimenti || []).map(a => ({ nome: a.nome || "", qta: a.qta || "" })) }] }));
     if (!b.pasti.length) b.pasti.push(NUOVI.pasti());
   }
-  Object.assign(foglio, { tipo, bozza: b, id, ignorate, avviso, errore: "", erroreTipo: "" });
+  Object.assign(foglio, { tipo, bozza: b, id, ignorate, avviso, errore: "", erroreTipo: "", daVista: foglio.vista });
   vistaFoglio("editor");
+}
+
+// salva la nuova scheda/dieta al posto di quella in uso (ogni telefono ha la sua)
+function salvaPiano(tipo, dati, id) {
+  const p = getPiani();
+  const nuovo = { id: id || nuovoId(), ...dati };
+  p[listaDi(tipo)] = [nuovo];
+  p[tipo] = nuovo.id;
+  store.set("piani", p);
+  if (tipo === "scheda") vaiAOggi();
+}
+function mostraFatto(fatto) {
+  foglio.fatto = fatto;
+  vistaFoglio("fatto");
+  render();
+  setTimeout(() => pop($("#foglio .m-check")), 250);
 }
 
 // pulisce la bozza prima di salvarla; restituisce un messaggio se manca qualcosa
@@ -724,30 +818,36 @@ function salvaBozza() {
     if (e) { e.scrollIntoView({ behavior: "smooth", block: "center" }); pop(e); }
     return;
   }
-  const p = getPiani(), lista = p[listaDi(foglio.tipo)];
-  const id = foglio.id && foglio.id !== PIANO_BASE ? foglio.id : nuovoId();
-  const i = lista.findIndex(x => x.id === id);
-  if (i >= 0) lista[i] = { id, ...r.dati }; else lista.push({ id, ...r.dati });
-  p[foglio.tipo] = id;
-  store.set("piani", p);
-  if (foglio.tipo === "scheda") vaiAOggi();
+  const tipo = foglio.tipo, modifica = !!foglio.id;
+  salvaPiano(tipo, r.dati, foglio.id);
   Object.assign(foglio, { bozza: null, avviso: "", ignorate: [] });
-  vistaFoglio("menu");
-  render();
+  mostraFatto({ tipi: [tipo], titolo: modifica ? "Modifiche salvate" : `${maiuscolaTipo(tipo)} salvata` });
 }
+const maiuscolaTipo = tipo => (tipo === "scheda" ? "Scheda" : "Dieta");
 
 async function caricaFile(file, tipo) {
   Object.assign(foglio, { caricamento: tipo, errore: "", erroreTipo: "" });
   renderFoglio();
+  const inizio = Date.now();
+  // la rotellina resta almeno un attimo, così si capisce che sta lavorando
+  const attendi = () => new Promise(r => setTimeout(r, Math.max(0, 700 - (Date.now() - inizio))));
   try {
     const nome = file.name.toLowerCase();
     const pdf = nome.endsWith(".pdf") || file.type === "application/pdf";
     if (nome.endsWith(".json") || file.type === "application/json") {
       let j;
       try { j = JSON.parse(await file.text()); } catch { throw new Error("Questo file non si riesce a leggere."); }
-      if (j.formato !== "palestra" || !j.dati) throw new Error("Questo file non è una scheda o una dieta dell'app.");
-      if (j.tipo !== tipo) throw new Error(j.tipo === "dieta" ? "Questo file è una dieta: caricalo nella sezione Dieta." : "Questo file è una scheda: caricalo nella sezione Scheda di allenamento.");
-      apriEditor(tipo, j.dati, null, [], "Ecco la scheda che ti hanno mandato. Controlla e premi <b>Salva</b>.".replace("la scheda", tipo === "scheda" ? "la scheda" : "la dieta"));
+      if (j.formato !== "palestra") throw new Error("Questo file non è una scheda o una dieta dell'app.");
+      // file completo (scheda + dieta insieme) oppure una sola delle due
+      const tipi = j.tipo === "completo" ? ["scheda", "dieta"].filter(t => j[t]) : [j.tipo];
+      if (j.tipo !== "completo" && j.tipo !== tipo) throw new Error(j.tipo === "dieta" ? "Questo file è una dieta: caricalo da «Nuova dieta»." : "Questo file è una scheda: caricalo da «Nuova scheda».");
+      for (const t of tipi) {
+        const dati = j.tipo === "completo" ? j[t] : j.dati;
+        if (!dati) throw new Error("Il file è incompleto.");
+        salvaPiano(t, dati);
+      }
+      await attendi();
+      mostraFatto({ tipi, titolo: tipi.length > 1 ? "Scheda e dieta salvate" : `${maiuscolaTipo(tipi[0])} salvata` });
       return;
     }
     const testo = pdf ? await testoDaPdf(file) : await file.text();
@@ -757,21 +857,31 @@ async function caricaFile(file, tipo) {
       ? "Non ho trovato esercizi in questo file. Ogni esercizio deve avere serie e ripetizioni, per esempio «Panca piana 4x8 rec 90»."
       : "Non ho trovato pasti in questo file. Servono i nomi dei pasti (Colazione, Pranzo…) e gli alimenti con le quantità.");
     if (!r.dati.nome) r.dati.nome = file.name.replace(/\.[^.]+$/, "");
-    const quanti = tipo === "scheda" ? riassunto("scheda", r.dati) : riassunto("dieta", r.dati);
-    const avviso = `Ho letto il file: <b>${esc(quanti)}</b>. Controlla che sia tutto giusto, correggi se serve e premi <b>Salva</b>.` +
-      (r.giorniAssegnati ? " Il file non diceva i giorni della settimana: li ho scelti io, cambiali se vuoi." : "");
-    apriEditor(tipo, r.dati, null, r.ignorate, avviso);
+    // controllo come farebbe il tasto Salva, poi salvo subito
+    const pronto = tipo === "scheda" ? preparaScheda(r.dati) : preparaDieta(r.dati);
+    if (pronto.errore) throw new Error("Ho letto il file ma manca qualcosa: " + pronto.errore.charAt(0).toLowerCase() + pronto.errore.slice(1) + " Prova a scriverla a mano.");
+    salvaPiano(tipo, pronto.dati);
+    await attendi();
+    mostraFatto({
+      tipi: [tipo], titolo: `${maiuscolaTipo(tipo)} salvata`, ignorate: r.ignorate,
+      avviso: r.giorniAssegnati ? "Il file non diceva i giorni della settimana: li ho scelti io. Se vuoi cambiarli tocca <b>Controlla e modifica</b>." : ""
+    });
   } catch (err) {
+    await attendi();
     Object.assign(foglio, { errore: err.message || "Non sono riuscito a leggere il file.", erroreTipo: tipo });
   } finally {
     foglio.caricamento = "";
-    if (foglio.vista === "menu") renderFoglio();
+    if (foglio.vista === "crea") {
+      renderFoglio();
+      const e = $("#foglio .f-errore");
+      if (e) pop(e);
+    }
   }
 }
 
-function inviaPiano(tipo, id) {
-  const x = id === PIANO_BASE ? baseDi(tipo) : getPiani()[listaDi(tipo)].find(p => p.id === id);
-  if (!x) return;
+function inviaPiano(tipo) {
+  if (!haPiano(tipo)) return;
+  const x = pianoAttivo(tipo);
   const { id: _, ...dati } = x;
   const blob = new Blob([JSON.stringify({ formato: "palestra", tipo, dati })], { type: "application/json" });
   const nomeFile = `${tipo}-${slug(x.nome) || tipo}.json`;
@@ -787,33 +897,18 @@ function inviaPiano(tipo, id) {
 
 function clickFoglio(t, ds) {
   if (ds.fChiudi !== undefined) return chiudiFoglio();
-  if (ds.fIndietro !== undefined) return vistaFoglio("menu");
+  if (ds.fIndietro !== undefined) {
+    if (foglio.vista === "editor") return vistaFoglio(foglio.daVista === "crea" ? "crea" : "menu");
+    return vistaFoglio("menu");
+  }
   if (ds.fSalva !== undefined) return salvaBozza();
+  if (ds.fCrea) { foglio.tipo = ds.fCrea; foglio.errore = ""; return vistaFoglio("crea"); }
   if (ds.fNuova) return apriEditor(ds.fNuova, vuoto(ds.fNuova), null);
-  const [tipo, id] = (ds.fUsa || ds.fModifica || ds.fInvia || ds.fElimina || "|").split("|");
-  if (ds.fUsa) {
-    const p = getPiani();
-    if (p[tipo] === id) return;
-    p[tipo] = id; store.set("piani", p);
-    if (tipo === "scheda") vaiAOggi();
-    renderFoglio(); render();
-    pop(t.querySelector(".radio"));
-    return;
-  }
-  if (ds.fModifica) {
-    const x = id === PIANO_BASE ? baseDi(tipo) : getPiani()[listaDi(tipo)].find(p => p.id === id);
-    if (x) apriEditor(tipo, x, id === PIANO_BASE ? null : id, [], id === PIANO_BASE ? "Salvando creerai una tua copia: quella di base resta com'è." : "");
-    return;
-  }
-  if (ds.fInvia) return inviaPiano(tipo, id);
-  if (ds.fElimina) {
-    if (!chiediConferma(t, "Sicuro?")) return;
-    const p = getPiani();
-    p[listaDi(tipo)] = p[listaDi(tipo)].filter(x => x.id !== id);
-    if (p[tipo] === id) p[tipo] = PIANO_BASE;
-    store.set("piani", p);
-    if (tipo === "scheda") vaiAOggi();
-    renderFoglio(); render();
+  if (ds.fModifica) { if (haPiano(ds.fModifica)) apriEditor(ds.fModifica, pianoAttivo(ds.fModifica), getPiani()[ds.fModifica]); return; }
+  if (ds.fInvia) return inviaPiano(ds.fInvia);
+  if (ds.fVai) {
+    chiudiFoglio();
+    if (state.tab !== (ds.fVai === "scheda" ? "allenamento" : "dieta")) vaiTab(ds.fVai === "scheda" ? "allenamento" : "dieta");
     return;
   }
   if (ds.add) {
@@ -903,7 +998,7 @@ document.addEventListener("click", e => {
   const ds = t.dataset;
 
   if (t.closest("#foglio")) { clickFoglio(t, ds); return; }
-  if (ds.fApri !== undefined) { apriFoglio(); return; }
+  if (ds.fApri !== undefined) { ds.fApri ? apriFoglio("crea", ds.fApri, t) : apriFoglio("menu", null, t); return; }
   if (ds.tab) { vaiTab(ds.tab); return; }
   if (ds.giorno !== undefined) {
     if (+ds.giorno === state.giorno) return;
